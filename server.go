@@ -1,49 +1,100 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"log"
 	"net"
 	"os"
-	"strings"
+	"strconv"
 	"time"
+
+	//"os"
+	"strings"
+
+	"go.etcd.io/etcd/client"
 )
 
-func show_rec(client net.Conn) {
+func initEntopy(nc net.Conn, kapi client.KeysAPI) string {
 	var message []byte
 	message = make([]byte, 1024)
-	log.Println("in show_rec")
-	log.Println(client.RemoteAddr())
+	log.Println(nc.RemoteAddr())
 
-	ra := client.RemoteAddr()
+	ra := nc.RemoteAddr()
 	vec := strings.Split(ra.String(), ":")
-	log.Println(vec[0])
+	newkey := "/" + vec[0]
+	fmt.Printf("newkey:%s\n", newkey)
 
-	len, _ := client.Read(message)
-
-	if len > 0 {
-
-		log.Println(message[0:len])
+	_, err := kapi.Get(context.Background(), newkey, &client.GetOptions{Recursive: true})
+	if err != nil {
+		log.Printf("Trying Get from  %v error , set it as initial\n", newkey)
+		_, err := kapi.Set(context.Background(), newkey, "10000", nil)
+		if err != nil {
+			log.Printf("kapi.Set %v error :%v\n", newkey, err)
+		}
 	}
 
+	go func(nc net.Conn) {
+		len, _ := nc.Read(message)
+		if len > 0 {
+			log.Println(message[0:len])
+		}
+	}(nc)
+	return newkey
 }
 
-func recvMessage(client net.Conn) error {
-	var first_read bool
-	first_read = true
+func recvMessage(nc net.Conn, kapi client.KeysAPI) error {
+	firstRead := true
+	var privatePath string
 	for {
-		if true == first_read {
-			first_read = false
-			go show_rec(client)
+
+		if firstRead {
+			firstRead = false
+			/*go initEntopy(client, kapi)*/
+			privatePath = initEntopy(nc, kapi)
 		}
 
-		client.Write([]byte("Big Dick of Go server , Ass Hole ! \n"))
+		resp, err := kapi.Get(context.Background(), privatePath, &client.GetOptions{Recursive: true})
+		if err != nil {
+			log.Printf("Trying privatePath error \n")
+			break
+		}
+		var entropy string
+
+		if resp.Node.Dir {
+			fmt.Printf("found dirs:%s\n", resp.Node.Key)
+		} else {
+			fmt.Printf("%s:%s\n", resp.Node.Key, resp.Node.Value)
+			entropy = resp.Node.Value
+		}
+
+		message := "Your Current entropy is " + entropy + "\n"
+		_, err = nc.Write([]byte(message))
+		if err != nil {
+			fmt.Printf("Connection error and quit\n")
+			break
+		}
 		time.Sleep(time.Duration(2) * time.Second)
+
+		/* munus and set */
+		iEntropy, err := strconv.Atoi(entropy)
+		if 0 == iEntropy {
+			break
+		}
+		iEntropy--
+		sEntropy := strconv.Itoa(iEntropy)
+
+		kapi.Set(context.Background(), privatePath, sEntropy, nil)
 	}
 
 	return nil
 }
 
 func main() {
+
+	kapi := getEtcdHandler()
+	listDebug(kapi)
+
 	server, err := net.Listen("tcp", "0.0.0.0:8888")
 	if err != nil {
 		log.Fatal("start server failed!\n")
@@ -60,6 +111,7 @@ func main() {
 		}
 
 		log.Println("the client is connectted...")
-		go recvMessage(client)
+		go recvMessage(client, kapi)
 	}
+
 }
