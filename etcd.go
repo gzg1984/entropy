@@ -16,7 +16,8 @@ var etcdGlobalHandler client.KeysAPI
 func getEtcdHandler() client.KeysAPI {
 	initEtcdHandler.Do(func() {
 		cfg := client.Config{
-			Endpoints: []string{"http://docker.for.mac.host.internal:2379"},
+			//Endpoints: []string{"http://docker.for.mac.host.internal:2379"},
+			Endpoints: []string{"http://127.0.0.1:2379", "http://127.0.0.1:2380"},
 			Transport: client.DefaultTransport,
 			// set timeout per request to fail fast when the target endpoint is unavailable
 			HeaderTimeoutPerRequest: 10 * time.Second,
@@ -24,7 +25,7 @@ func getEtcdHandler() client.KeysAPI {
 		}
 		c, err := client.New(cfg)
 		if err != nil {
-			log.Printf("create client to 127.0.0.1:2379 error \n")
+			log.Printf("create client to %v error \n", cfg)
 			log.Fatal(err)
 		}
 
@@ -34,11 +35,11 @@ func getEtcdHandler() client.KeysAPI {
 	return etcdGlobalHandler
 }
 
-func listDebug(kapi client.KeysAPI) {
+func listDebug(kapi client.KeysAPI) error {
 	resp, err := kapi.Get(context.Background(), "/", nil)
 	if err != nil {
 		log.Printf("Tring GetAllModuletype error \n")
-		return
+		return err
 	}
 	for _, node := range resp.Node.Nodes {
 		if node.Dir {
@@ -48,4 +49,5 @@ func listDebug(kapi client.KeysAPI) {
 
 		}
 	}
+	return nil
 }

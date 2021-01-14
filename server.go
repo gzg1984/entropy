@@ -91,7 +91,11 @@ func recvMessage(nc net.Conn, kapi client.KeysAPI) error {
 func main() {
 
 	kapi := getEtcdHandler()
-	listDebug(kapi)
+	err := listDebug(kapi)
+	if err != nil {
+		log.Fatalf("listDebug failed:%v\n", err)
+		os.Exit(1)
+	}
 
 	server, err := net.Listen("tcp", "0.0.0.0:8888")
 	if err != nil {
